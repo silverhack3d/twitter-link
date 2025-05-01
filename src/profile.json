@@ -1,0 +1,13 @@
+{
+	"name": "Custom Name",
+	"url": "https://twitter.com/YourProfile",
+	"description": "Custom description",
+	"location": "Custom Location",
+	"useRandomDescriptions": false,
+	"descriptions": [
+		"Custom description 1",
+		"Custom description 2",
+		"Custom description 3"
+	],
+	"includePaddedCountInName": true
+}
