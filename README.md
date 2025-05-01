@@ -83,13 +83,25 @@ Edit `src/profile.json` to set your name, description, and other profile options
 
 ---
 
-### 6. **Deploy to Vercel**
+### 6. **Upload to a Private GitHub Repository**
+
+1. Go to [GitHub.com](https://github.com/) and sign in.
+2. Click the **+** icon in the top right and select **New repository**.
+3. Enter a repository name (e.g., `twitter-link`), set the repository to **Private**, and click **Create repository**.
+4. On the new repository page, click **Add file** > **Upload files**.
+5. Drag and drop all the files and folders from your local `twitter-link` project folder into the upload area, or click **choose your files** to select them.
+6. Scroll down, add a commit message (e.g., "Initial commit"), and click **Commit changes**.
+7. Your code is now uploaded to your private GitHub repository and ready to be imported to Vercel.
+
+---
+
+### 7. **Deploy to Vercel**
 
 If you haven't already, import your repo to [Vercel](https://vercel.com/import/git).
 
 ---
 
-### 7. **Add Avatar & Banner**
+### 8. **Add Avatar & Banner**
 
 - Create `public` directory in the root directory, where all files like `package.json` etc. are.
 - Place `avatar.png` and `banner.png` in the public directory.
