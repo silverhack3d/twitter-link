@@ -91,8 +91,9 @@ If you haven't already, import your repo to [Vercel](https://vercel.com/import/g
 
 ### 7. **Add Avatar & Banner**
 
+- Create `public` directory in the root directory, where all files like `package.json` etc. are.
 - Place `avatar.png` and `banner.png` in the public directory.
-- These will be uploaded to your Twitter profile if present.
+- These will be uploaded to Twitter profile if present.
 
 ---
 
