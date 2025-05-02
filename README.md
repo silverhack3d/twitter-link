@@ -1,6 +1,6 @@
 # Twitter Profile Updater
 
-This project is a Next.js app that lets you update your Twitter profile using OAuth 1.0A. It uses PostgreSQL for storing user data and supports custom profile configuration.
+This project is a Next.js SSR (Server Side Rendering) app that lets you update your Twitter profile using OAuth 1.0A
 
 ---
 
@@ -45,7 +45,7 @@ In Vercel, go to your project settings → **Environment Variables** and add:
 | `DATABASE_URL`            | `postgres://user:pass@host:port/db`    |
 | `TWITTER_CLIENT_ID`       | Your Twitter API Key                   |
 | `TWITTER_CLIENT_SECRET`   | Your Twitter API Secret                |
-| `TWITTER_CALLBACK_URL`    | `https://<your-vercel-domain>/api/auth/callback` |
+| `TWITTER_API_CREDENTIALS` | Stringified JSON of `{clientId, clientSecret}` |
 
 ---
 
@@ -57,10 +57,17 @@ Edit `src/profile.json` to set your name, description, and other profile options
 
 ```json
 {
-  "name": "Custom Name",                // Twitter display name
-  "url": "https://twitter.com/YourProfile", // URL to appear on profile
-  "description": "Custom description",  // Main profile description
-  "location": "Custom Location",        // Location field
+  "name": "Custom Name",                // Display name
+  "url": "https://twitter.com/YourProfile",
+  "description": "Custom description",
+  "location": "Custom Location",
+  "tweets": [                           // List of tweets to post (chosen randomly)
+    {
+      "text": "My awesome tweet text #{count}", // Text, {count} is replaced
+      "image": "image_{count}.png"           // Optional image path, must be in `public` folder
+    }
+  ],
+  "retweetIds": ["1234567890123456789"],  // List of Tweet IDs to retweet (as string)
   "useRandomDescriptions": false,       // If true, picks a random description from 'descriptions'
   "descriptions": [                     // List of possible descriptions (used if above is true)
     "Custom description 1",
@@ -77,6 +84,8 @@ Edit `src/profile.json` to set your name, description, and other profile options
 - `url`: String. Your profile or website URL.
 - `description`: String. Main profile description.
 - `location`: String. Location field.
+- `tweets`: Array of objects. Each object has `text` (string) and optional `image` (string) (must be in `public` folder). The app will rotate through these tweets. Use `{count}` as a placeholder for the count.
+- `retweetIds`: Array of strings. Tweet IDs (as strings) that the app should attempt to retweet
 - `useRandomDescriptions`: Boolean. If true, randomly selects a description from `descriptions` array.
 - `descriptions`: Array of strings. Possible descriptions to use if `useRandomDescriptions` is true.
 - `includePaddedCountInName`: Boolean. If true, appends a padded count to your display name.

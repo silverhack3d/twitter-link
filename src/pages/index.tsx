@@ -4,7 +4,7 @@
  */
 
 import type { GetServerSideProps } from "next";
-import { getOAuthClient } from "@/utils/oauth";
+import { TwitterApi, ApiResponseError } from "twitter-api-v2";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -16,31 +16,13 @@ export default function Home({
 	const router = useRouter();
 
 	const handleRedirect = () => {
-		if (oauthUrl) {
-			router.push(oauthUrl);
-		}
+		if (oauthUrl) router.push(oauthUrl);
 	};
 
 	return (
-		<div
-			style={{
-				display: "flex",
-				flexDirection: "column",
-				justifyContent: "center",
-				alignItems: "center",
-				height: "100vh",
-				gap: "20px",
-			}}
-		>
+		<div className="flex min-h-screen flex-col items-center justify-center gap-5 bg-gray-100 p-4">
 			{error ? (
-				<div
-					style={{
-						color: "red",
-						fontWeight: "bold",
-						fontSize: "18px",
-						textAlign: "center",
-					}}
-				>
+				<div className="text-center text-lg font-bold text-red-600">
 					{error}
 				</div>
 			) : (
@@ -49,17 +31,7 @@ export default function Home({
 					onClick={handleRedirect}
 					onMouseEnter={() => setIsHovered(true)}
 					onMouseLeave={() => setIsHovered(false)}
-					style={{
-						padding: "10px 20px",
-						cursor: "pointer",
-						backgroundColor: isHovered ? "#1a91da" : "#1DA1F2",
-						color: "white",
-						border: "none",
-						borderRadius: "20px",
-						fontSize: "16px",
-						fontWeight: "bold",
-						transition: "background-color 0.2s",
-					}}
+					className={`cursor-pointer rounded-full border-none px-5 py-2.5 text-base font-bold text-white transition-colors duration-200 ${isHovered ? "bg-sky-600" : "bg-sky-500"}`}
 				>
 					Connect Twitter
 				</button>
@@ -69,32 +41,50 @@ export default function Home({
 }
 
 export const getServerSideProps: GetServerSideProps = async (context) => {
-	const { oauth_token } = context.req.cookies;
-	if (oauth_token) {
+	const { oauth_token: permanent_oauth_token } = context.req.cookies;
+	if (permanent_oauth_token)
+		return { redirect: { destination: "/profile", permanent: false } };
+
+	const appKey = process.env.TWITTER_CLIENT_ID;
+	const appSecret = process.env.TWITTER_CLIENT_SECRET;
+
+	if (!appKey || !appSecret) {
+		console.error(
+			"Index page Error: Missing TWITTER_CLIENT_ID or TWITTER_CLIENT_SECRET environment variables.",
+		);
+		return { props: { error: "Server configuration error." } };
+	}
+
+	const twitterClient = new TwitterApi({ appKey, appSecret });
+
+	const callbackUrl = process.env.NEXT_PUBLIC_BASE_URL
+		? `${process.env.NEXT_PUBLIC_BASE_URL}/api/auth/callback`
+		: "http://localhost:3000/api/auth/callback";
+
+	try {
+		const { url, oauth_token_secret } = await twitterClient.generateAuthLink(
+			callbackUrl,
+			{ linkMode: "authorize" },
+		);
+
+		context.res.setHeader(
+			"Set-Cookie",
+			`temp_oauth_secret=${oauth_token_secret}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=900`,
+		);
+
+		return { props: { oauthUrl: url } };
+	} catch (error) {
+		console.error("Error generating Twitter auth link:", error);
+		if (error instanceof ApiResponseError) {
+			return {
+				props: { error: `Auth failed (${error.code}): ${error.message}` },
+			};
+		}
+
 		return {
-			redirect: {
-				destination: "/profile",
-				permanent: false,
+			props: {
+				error: "Failed to generate Twitter auth link due to server error.",
 			},
 		};
 	}
-	const oauth = getOAuthClient();
-	return new Promise((resolve) => {
-		oauth.getOAuthRequestToken((error, token, tokenSecret) => {
-			if (error) {
-				resolve({ props: { error: "Auth failed" } });
-				return;
-			}
-			context.res.setHeader(
-				"Set-Cookie",
-				`temp_oauth_secret=${tokenSecret}; Path=/; HttpOnly; Secure; Max-Age=604800`,
-			);
-
-			resolve({
-				props: {
-					oauthUrl: `https://twitter.com/oauth/authorize?oauth_token=${token}`,
-				},
-			});
-		});
-	});
 };

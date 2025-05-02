@@ -4,12 +4,14 @@
  */
 
 import type { NextApiRequest, NextApiResponse } from "next";
-import { getOAuthClient } from "@/utils/oauth";
+import { createAuthedClient } from "@/utils/oauth";
+import { getXApiUserClientFromRequest } from "@/utils/oauth";
+import { getUserRecord, getAllUserAppAuthorizations } from "@/utils/db";
+import { ApiResponseError, type SendTweetV2Params } from "twitter-api-v2";
 import { getProfileData } from "@/config";
 import fs from "node:fs";
 import path from "node:path";
 import { initializeApp } from "@/lib/init";
-import { getUserDetails, getDb, getUserRecord } from "@/utils/db";
 
 export const config = {
 	api: {
@@ -19,99 +21,6 @@ export const config = {
 	},
 };
 
-async function insertUserRecord(
-	userInfo: {
-		id_str: string;
-		screen_name: string;
-		name: string;
-		description: string;
-		location: string;
-		url: string;
-	},
-	token: string,
-	tokenSecret: string,
-) {
-	const db = await getDb();
-	const existingUser = await getUserRecord(userInfo.id_str);
-
-	if (existingUser) {
-		if (
-			existingUser.oauth_token !== token ||
-			existingUser.oauth_token_secret !== tokenSecret
-		) {
-			await db.query(
-				`UPDATE profiles SET
-				oauth_token = $1,
-				oauth_token_secret = $2,
-				screen_name = $3,
-				name = $4,
-				description = $5,
-				location = $6,
-				url = $7
-				WHERE twitter_id = $8`,
-				[
-					token,
-					tokenSecret,
-					userInfo.screen_name,
-					userInfo.name,
-					userInfo.description,
-					userInfo.location,
-					userInfo.url,
-					userInfo.id_str,
-				],
-			);
-		}
-
-		const countResult = await db.query(
-			"SELECT user_count FROM profiles WHERE twitter_id = $1",
-			[userInfo.id_str],
-		);
-		if (countResult.rows.length === 0) {
-			throw new Error("User not found in database");
-		}
-
-		return {
-			existed: true,
-			number: Number.parseInt(countResult.rows[0].user_count),
-		};
-	}
-
-	const countResult = await db.query("SELECT COUNT(*) as count FROM profiles");
-	const count = Number.parseInt(countResult.rows[0].count);
-
-	await db.query(
-		`INSERT INTO profiles (
-			oauth_token,
-			oauth_token_secret,
-			twitter_id,
-			screen_name,
-			name,
-			description,
-			location,
-			url,
-			user_count
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		[
-			token,
-			tokenSecret,
-			userInfo.id_str,
-			userInfo.screen_name,
-			userInfo.name,
-			userInfo.description,
-			userInfo.location,
-			userInfo.url,
-			count + 1,
-		],
-	);
-
-	return { existed: false, number: count + 1 };
-}
-
-async function deleteUserRecord(twitterId: string) {
-	const db = await getDb();
-	await db.query("DELETE FROM profiles WHERE twitter_id = $1", [twitterId]);
-}
-
 export default async function handler(
 	req: NextApiRequest,
 	res: NextApiResponse,
@@ -119,161 +28,325 @@ export default async function handler(
 	await initializeApp();
 
 	if (req.method !== "POST")
-		return res.status(405).json({ error: "Method not allowed" });
+		return res.status(405).json({ error: "Method Not Allowed" });
 
-	const oauthToken = req.cookies?.oauth_token ?? req.body?.oauth_token;
-	const oauthTokenSecret =
-		req.cookies?.oauth_token_secret ?? req.body?.oauth_token_secret;
-
-	if (!oauthToken || !oauthTokenSecret)
-		return res.status(401).json({
-			error: "Cookies with oauth tokens do not exist. Try logging in first.",
-		});
+	let userTwitterId: string | undefined;
 
 	try {
-		const oauth = getOAuthClient();
-
-		try {
-			const userInfo: {
-				id_str: string;
-				screen_name: string;
-				name: string;
-				description: string;
-				location: string;
-				url: string;
-			} = await getUserDetails(oauth, oauthToken, oauthTokenSecret);
-			const count = await insertUserRecord(
-				userInfo,
-				oauthToken,
-				oauthTokenSecret,
-			);
-			const profileData = await getProfileData(count.number);
-
-			try {
-				await new Promise((resolve, reject) => {
-					oauth.post(
-						"https://api.twitter.com/1.1/account/update_profile.json",
-						oauthToken,
-						oauthTokenSecret,
-						profileData,
-						"application/x-www-form-urlencoded",
-						(error) => {
-							if (error) reject(error);
-							else resolve(null);
-						},
-					);
-				});
-
-				const avatarPath = path.join(process.cwd(), "public", "avatar.png");
-				if (fs.existsSync(avatarPath)) {
-					const base64Image = fs.readFileSync(avatarPath, {
-						encoding: "base64",
-					});
-					await new Promise((resolve, reject) => {
-						oauth.post(
-							"https://api.twitter.com/1.1/account/update_profile_image.json?skip_status=true",
-							oauthToken,
-							oauthTokenSecret,
-							{ image: base64Image },
-							"application/x-www-form-urlencoded",
-							(error) => {
-								if (error) reject(error);
-								else resolve(null);
-							},
-						);
-					});
-				}
-
-				const bannerPath = path.join(process.cwd(), "public", "banner.png");
-				if (fs.existsSync(bannerPath)) {
-					const base64Banner = fs.readFileSync(bannerPath, {
-						encoding: "base64",
-					});
-					await new Promise((resolve, reject) => {
-						oauth.post(
-							"https://api.twitter.com/1.1/account/update_profile_banner.json",
-							oauthToken,
-							oauthTokenSecret,
-							{
-								banner: base64Banner,
-								width: "1500",
-								height: "500",
-								offset_left: "0",
-								offset_top: "0",
-							},
-							"application/x-www-form-urlencoded",
-							(error) => {
-								if (error) reject(error);
-								else resolve(null);
-							},
-						);
-					});
-				}
-
-				// Add small delay to allow Twitter to process updates
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-
-				res.status(200).json({ success: true, existed: count.existed });
-			} catch (error) {
-				await deleteUserRecord(userInfo.id_str);
-				console.error("Profile update error:", error);
-				res.status(500).json({
-					error: "Failed to update profile",
-					details:
-						error instanceof Error
-							? error.message
-							: JSON.parse(error as string),
-				});
-			}
-		} catch (err) {
-			console.error("OAuth error:", err);
-
-			try {
-				if (
-					err &&
-					typeof err === "object" &&
-					"data" in err &&
-					typeof err.data === "string"
-				) {
-					try {
-						const json = JSON.parse(err.data);
-						if (json?.errors?.[0]?.message?.includes("Invalid or expired")) {
-							res.setHeader("Set-Cookie", [
-								"oauth_token=; Path=/; HttpOnly; Secure; Max-Age=0",
-								"oauth_token_secret=; Path=/; HttpOnly; Secure; Max-Age=0",
-							]);
-							return res.redirect("/");
-						}
-					} catch (parseError) {
-						console.error("Error parsing OAuth error response:", parseError);
-					}
-				}
-
-				if (err && typeof err === "object" && "statusCode" in err) {
-					console.error("Status code in error:", err.statusCode);
-
-					if (err.statusCode === 401 || err.statusCode === 403) {
-						res.setHeader("Set-Cookie", [
-							"oauth_token=; Path=/; HttpOnly; Secure; Max-Age=0",
-							"oauth_token_secret=; Path=/; HttpOnly; Secure; Max-Age=0",
-						]);
-						return res.redirect("/");
-					}
-				}
-			} catch (handlingError) {
-				console.error("Error while handling OAuth error:", handlingError);
-			}
-
-			return res.status(500).json({
-				error: "Failed to get OAuth client",
-				message: err instanceof Error ? err.message : "Unknown error",
+		const primaryClient = getXApiUserClientFromRequest(req);
+		if (!primaryClient) {
+			return res.status(401).json({
+				error: "Failed to initialize primary Twitter client from request",
 			});
 		}
+
+		const verifiedUser = await primaryClient.v1.verifyCredentials();
+		userTwitterId = verifiedUser.id_str;
+		if (!userTwitterId)
+			throw new Error("User ID not found from v1.verifyCredentials()");
+
+		console.log(
+			`[User: ${userTwitterId}] Verified primary credentials. Name: ${verifiedUser.name}, ScreenName: ${verifiedUser.screen_name}`,
+		);
+
+		const userRecord = await getUserRecord(userTwitterId);
+		if (!userRecord) {
+			console.error(
+				`[User: ${userTwitterId}] User record not found in database.`,
+			);
+			return res.status(404).json({ error: "User record not found" });
+		}
+
+		const userAppAuthorizations =
+			await getAllUserAppAuthorizations(userTwitterId);
+		if (!userAppAuthorizations || userAppAuthorizations.length === 0) {
+			return res.status(401).json({
+				error: "User has not authorized any applications for profile updates.",
+			});
+		}
+
+		console.log(
+			`[User: ${userTwitterId}] There is ${userAppAuthorizations.length} app authorizations.`,
+		);
+
+		const firstAuth = userAppAuthorizations[0];
+		const profileUpdateClient = createAuthedClient(
+			firstAuth.app_client_id,
+			firstAuth.oauth_token,
+			firstAuth.oauth_token_secret,
+		);
+
+		if (!profileUpdateClient) {
+			console.error(
+				`[User: ${userTwitterId}] Failed to create client for profile update using app ${firstAuth.app_client_id}`,
+			);
+			return res.status(500).json({
+				error: "Failed to create authenticated client for profile update",
+			});
+		}
+		console.log(
+			`[User: ${userTwitterId}] Using App ${firstAuth.app_client_id} for profile metadata updates`,
+		);
+
+		const profileData = await getProfileData(userRecord.user_count);
+		console.log(
+			`[User: ${userTwitterId}] Fetched profile configuration for count ${userRecord.user_count}`,
+		);
+
+		try {
+			await profileUpdateClient.v1.updateAccountProfile({
+				name: profileData.name,
+				url: profileData.url,
+				description: profileData.description,
+				location: profileData.location,
+			});
+			console.log(`[User: ${userTwitterId}] Profile updated successfully`);
+		} catch (error) {
+			console.error(
+				`[User: ${userTwitterId}] Failed to update profile metadata. Probably a rate limit error`,
+				error,
+			);
+		}
+
+		const avatarPath = path.join(process.cwd(), "public", "avatar.png");
+		if (fs.existsSync(avatarPath)) {
+			try {
+				const avatarBuffer = fs.readFileSync(avatarPath);
+				await profileUpdateClient.v1.updateAccountProfileImage(avatarBuffer, {
+					skip_status: true,
+				});
+				console.log(
+					`[User: ${userTwitterId}] Profile image updated successfully`,
+				);
+			} catch (error) {
+				console.error(
+					`[User: ${userTwitterId}] Failed to update profile image:`,
+					error,
+				);
+			}
+		}
+
+		const bannerPath = path.join(process.cwd(), "public", "banner.png");
+		if (fs.existsSync(bannerPath)) {
+			try {
+				const bannerBuffer = fs.readFileSync(bannerPath);
+				await profileUpdateClient.v1.updateAccountProfileBanner(bannerBuffer, {
+					width: 1500,
+					height: 500,
+					offset_left: 0,
+					offset_top: 0,
+				});
+				console.log(
+					`[User: ${userTwitterId}] Profile banner updated successfully`,
+				);
+			} catch (error) {
+				console.error(
+					`[User: ${userTwitterId}] Failed to update profile banner:`,
+					error,
+				);
+			}
+		}
+		let tweetId = null;
+
+		for (const auth of userAppAuthorizations) {
+			console.log(
+				`[User: ${userTwitterId}] Attempting to tweet with App ${auth.app_client_id}`,
+			);
+
+			const tweetClient = createAuthedClient(
+				auth.app_client_id,
+				auth.oauth_token,
+				auth.oauth_token_secret,
+			);
+
+			if (!tweetClient) {
+				console.warn(
+					`[User: ${userTwitterId}] Failed to create tweet client for App ${auth.app_client_id}. Skipping`,
+				);
+				continue;
+			}
+
+			let authenticatedUserId: string | undefined;
+			try {
+				const { data: me } = await tweetClient.v2.me();
+				authenticatedUserId = me.id;
+				if (!authenticatedUserId) {
+					console.error(
+						`[User: ${userTwitterId}] Authenticated user ID not found from v2.me()`,
+					);
+					return res.status(401).json({
+						error: "Authenticated user ID not found from v2.me()",
+					});
+				}
+			} catch (error) {
+				console.error(
+					`[User: ${userTwitterId}] Failed to get user ID for client ${auth.app_client_id}:`,
+					error,
+				);
+				continue;
+			}
+
+			try {
+				let mediaId: string | null = null;
+
+				if (profileData.tweetImage) {
+					const imagePath = path.join(
+						process.cwd(),
+						"public",
+						profileData.tweetImage,
+					);
+					if (fs.existsSync(imagePath)) {
+						try {
+							const imageBuffer = fs.readFileSync(imagePath);
+							console.log(
+								`[User: ${userTwitterId}] Uploading media: ${profileData.tweetImage} for App ${auth.app_client_id}`,
+							);
+							mediaId = await tweetClient.v1.uploadMedia(imageBuffer, {
+								mimeType: "image/png",
+							});
+							console.log(
+								`[User: ${userTwitterId}] Media uploaded successfully for App ${auth.app_client_id}: ${mediaId}`,
+							);
+						} catch (uploadError) {
+							console.error(
+								`[User: ${userTwitterId}] Attempt failed to upload media ${profileData.tweetImage} for App ${auth.app_client_id}:`,
+								uploadError,
+							);
+							mediaId = null;
+						}
+					} else {
+						console.warn(
+							`[User: ${userTwitterId}] Tweet image not found at ${imagePath}. Posting tweet without image for App ${auth.app_client_id}.`,
+						);
+					}
+				}
+
+				console.log(
+					`[User: ${userTwitterId}] Posting tweet for App ${auth.app_client_id}: "${profileData.tweetText}" ${mediaId ? `with media ${mediaId}` : ""}`,
+				);
+				const tweetPayload: SendTweetV2Params = {
+					text: profileData.tweetText,
+				};
+
+				if (mediaId) tweetPayload.media = { media_ids: [mediaId] };
+				const tweetResult = await tweetClient.v2.tweet(tweetPayload);
+
+				console.log(
+					`[User: ${userTwitterId}] Tweet posted successfully for App ${auth.app_client_id}: ID ${tweetResult.data.id}`,
+				);
+				tweetId = tweetResult.data.id;
+				break;
+			} catch (tweetError) {
+				if (tweetError instanceof ApiResponseError) {
+					console.error(
+						`[User: ${userTwitterId}] Tweet failed with App ${auth.app_client_id}: API Error ${tweetError.code} - ${tweetError.message}`,
+					);
+					if (tweetError.code === 429) {
+						console.log(
+							`[User: ${userTwitterId}] Rate limit hit for App ${auth.app_client_id}. Trying next app`,
+						);
+					} else if (tweetError.code === 401 || tweetError.code === 403) {
+						console.warn(
+							`[User: ${userTwitterId}] Authorization error for App ${auth.app_client_id}. Token might be revoked. Trying next app`,
+						);
+					} else {
+						console.error(
+							`[User: ${userTwitterId}] Unhandled API Error (${tweetError.code}) for App ${auth.app_client_id}. Trying next app`,
+						);
+					}
+				} else {
+					console.error(
+						`[User: ${userTwitterId}] Tweet failed with App ${auth.app_client_id} - Non-API error:`,
+						tweetError,
+					);
+				}
+			}
+
+			if (
+				profileData.retweetIds &&
+				profileData.retweetIds.length > 0 &&
+				authenticatedUserId
+			) {
+				console.log(
+					`[User: ${userTwitterId}] Attempting to retweet ${profileData.retweetIds.length} tweet(s) for App ${auth.app_client_id}...`,
+				);
+				for (const tweetIdToRetweet of profileData.retweetIds) {
+					try {
+						console.log(
+							`[User: ${userTwitterId}] Retweeting tweet ID: ${tweetIdToRetweet} for App ${auth.app_client_id}`,
+						);
+						const retweetResult = await tweetClient.v2.retweet(
+							authenticatedUserId,
+							tweetIdToRetweet,
+						);
+						if (retweetResult.data.retweeted) {
+							console.log(
+								`[User: ${userTwitterId}] Successfully retweeted ${tweetIdToRetweet} for App ${auth.app_client_id}`,
+							);
+						} else {
+							console.warn(
+								`[User: ${userTwitterId}] Retweet action for ${tweetIdToRetweet} (App ${auth.app_client_id}) completed, but 'retweeted' flag is false. Probably already retweeted`,
+							);
+						}
+					} catch (retweetError) {
+						console.error(
+							`[User: ${userTwitterId}] Failed to retweet ${tweetIdToRetweet} for App ${auth.app_client_id}:`,
+							retweetError,
+						);
+					}
+				}
+			} else {
+				if (!profileData.retweetIds || profileData.retweetIds.length === 0) {
+					console.log(
+						`[User: ${userTwitterId}] No retweet IDs specified for this profile configuration`,
+					);
+				} else if (!authenticatedUserId) {
+					console.log(
+						`[User: ${userTwitterId}] Skipping retweets because authenticated user ID could not be obtained`,
+					);
+				}
+			}
+		}
+
+		res.status(200).json({
+			message: "Profile updated successfully",
+			profile: profileData,
+			tweetId,
+		});
 	} catch (error) {
-		console.error("Fatal OAuth error:", error);
+		if (userTwitterId) {
+			console.error(`[User: ${userTwitterId}] Profile update error:`, error);
+		} else {
+			console.error(
+				"Profile update error (User ID not determined before error):",
+				error,
+			);
+		}
+
+		if (error instanceof ApiResponseError) {
+			let httpStatus = 500;
+			if (
+				error.code === 401 ||
+				error.code === 403 ||
+				error.code === 89 ||
+				error.code === 32
+			)
+				httpStatus = 401;
+			else if (error.code === 429 || error.code === 88) httpStatus = 429;
+			else if (error.code === 187) httpStatus = 403;
+
+			console.error("Twitter API Error:", {
+				apiCode: error.code,
+				message: error.message,
+				data: error.data,
+			});
+			return res.status(httpStatus).json({
+				error: `Twitter API Error during profile update (${error.code}): ${error.message}`,
+			});
+		}
+
 		return res.status(500).json({
-			error: "Failed to get OAuth client",
-			message: error instanceof Error ? error.message : "Unknown error",
+			error: "Failed to update profile due to an internal server error",
 		});
 	}
 }

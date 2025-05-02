@@ -9,5 +9,12 @@
 		"Custom description 2",
 		"Custom description 3"
 	],
-	"includePaddedCountInName": true
+	"includePaddedCountInName": true,
+	"tweets": [
+		{
+			"text": "This is a test tweet",
+			"image": "test.png"
+		}
+	],
+	"retweetIds": []
 }
