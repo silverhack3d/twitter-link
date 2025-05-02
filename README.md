@@ -47,6 +47,8 @@ In Vercel, go to your project settings → **Environment Variables** and add:
 | `TWITTER_CLIENT_SECRET`   | Your Twitter API Secret                |
 | `TWITTER_API_CREDENTIALS` | Stringified JSON of `{clientId, clientSecret}` |
 
+Stringified JSON looks like this: `'[{"clientId":"","clientSecret":""}]'`
+
 ---
 
 ### 5. **Customize Profile Settings**
@@ -120,6 +122,6 @@ If you haven't already, import your repo to [Vercel](https://vercel.com/import/g
 
 ## ⚠️ Notes
 
-- **OAuth 1.0A** is used because Twitter's free API tier only supports this flow.
 - Make sure your Vercel project is set to use Node.js 18+ (default is fine).
 - All secrets must be set in Vercel's environment variables for production.
+- Posting tweets/retweeting counts towards 500 writes per month limit.
