@@ -32,9 +32,8 @@ export interface ProfileData {
 }
 
 export async function getProfileData(count: number) {
-	const __dirname = path.dirname(fileURLToPath(import.meta.url));
 	const paddedCount = count.toString().padStart(4, "0");
-	const profilePath = path.resolve(__dirname, "./profile.json");
+	const profilePath = `${process.cwd()}/profile.json`;
 
 	let profile: ProfileConfig = {};
 
