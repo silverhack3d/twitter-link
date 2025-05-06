@@ -1,6 +1,4 @@
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 
 interface TweetConfig {
 	text: string;
@@ -33,12 +31,12 @@ export interface ProfileData {
 
 export async function getProfileData(count: number) {
 	const paddedCount = count.toString().padStart(4, "0");
-	const profilePath = `${process.cwd()}/profile.json`;
+	const profilePath = `${process.cwd()}//src//profile.json`;
 
 	let profile: ProfileConfig = {};
 
 	try {
-		const data = await fs.readFile(profilePath, "utf-8");
+		const data = readFileSync(profilePath, "utf-8");
 		profile = JSON.parse(data);
 	} catch {
 		throw new Error("Config file not found");
