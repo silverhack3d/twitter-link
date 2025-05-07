@@ -54,14 +54,10 @@ export async function getProfileData(count: number) {
 	const includePaddedCount = profile.includePaddedCountInName ?? true;
 	const nameBase = profile.name || "default name";
 	const name = includePaddedCount ? `${nameBase} #${paddedCount}` : nameBase;
-
-	const defaultTweet: TweetConfig = {
-		text: `Default tweet update #${paddedCount}`,
-	};
 	const tweets =
 		Array.isArray(profile.tweets) && profile.tweets.length > 0
 			? profile.tweets
-			: [defaultTweet];
+			: [];
 
 	const selectedTweetConfig = tweets[count % tweets.length];
 
