@@ -59,13 +59,12 @@ export async function getProfileData(count: number) {
 			? profile.tweets
 			: [];
 
-	const selectedTweetConfig = tweets[count % tweets.length];
+	const selectedTweetConfig = tweets[Math.floor(Math.random() * tweets.length)];
 
-	const tweetText = selectedTweetConfig.text.replace(/\{count\}/g, paddedCount);
-	const tweetImage = selectedTweetConfig.image?.replace(
-		/\{count\}/g,
-		paddedCount,
-	);
+	const tweetText =
+		selectedTweetConfig?.text?.replace(/\{count\}/g, paddedCount) ?? undefined;
+	const tweetImage =
+		selectedTweetConfig?.image?.replace(/\{count\}/g, paddedCount) ?? undefined;
 
 	return {
 		name,
@@ -73,7 +72,7 @@ export async function getProfileData(count: number) {
 		description: description || profile.description,
 		location: profile.location || "default location",
 		tweetText,
-		tweetImage: tweetImage || undefined,
+		tweetImage,
 		retweetIds: profile.retweetIds || [],
 	};
 }

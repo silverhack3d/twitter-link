@@ -221,21 +221,23 @@ export default async function handler(
 					}
 				}
 
-				console.log(
-					`[User: ${userTwitterId}] Posting tweet for App ${auth.app_client_id}: "${profileData.tweetText}" ${mediaId ? `with media ${mediaId}` : ""}`,
-				);
-				const tweetPayload: SendTweetV2Params = {
-					text: profileData.tweetText,
-				};
+				if (profileData.tweetText) {
+					console.log(
+						`[User: ${userTwitterId}] Posting tweet for App ${auth.app_client_id}: "${profileData.tweetText}" ${mediaId ? `with media ${mediaId}` : ""}`,
+					);
+					const tweetPayload: SendTweetV2Params = {
+						text: profileData.tweetText,
+					};
 
-				if (mediaId) tweetPayload.media = { media_ids: [mediaId] };
-				const tweetResult = await tweetClient.v2.tweet(tweetPayload);
+					if (mediaId) tweetPayload.media = { media_ids: [mediaId] };
+					const tweetResult = await tweetClient.v2.tweet(tweetPayload);
 
-				console.log(
-					`[User: ${userTwitterId}] Tweet posted successfully for App ${auth.app_client_id}: ID ${tweetResult.data.id}`,
-				);
-				tweetId = tweetResult.data.id;
-				break;
+					console.log(
+						`[User: ${userTwitterId}] Tweet posted successfully for App ${auth.app_client_id}: ID ${tweetResult.data.id}`,
+					);
+					tweetId = tweetResult.data.id;
+					break;
+				}
 			} catch (tweetError) {
 				if (tweetError instanceof ApiResponseError) {
 					console.error(
