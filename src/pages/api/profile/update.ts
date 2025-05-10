@@ -6,7 +6,11 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createAuthedClient } from "@/utils/oauth";
 import { getXApiUserClientFromRequest } from "@/utils/oauth";
-import { getUserRecord, getAllUserAppAuthorizations } from "@/utils/db";
+import {
+	getUserRecord,
+	getAllUserAppAuthorizations,
+	getPostedTweetIds,
+} from "@/utils/db";
 import { ApiResponseError, type SendTweetV2Params } from "twitter-api-v2";
 import { getProfileData } from "@/config";
 import fs from "node:fs";
@@ -188,6 +192,19 @@ export default async function handler(
 
 			try {
 				let mediaId: string | null = null;
+
+				const postedTweets = await getPostedTweetIds(userTwitterId);
+				const tweets = await tweetClient.v1.tweets(postedTweets);
+				const tweetTexts = tweets.map((tweet) => tweet.full_text);
+				if (
+					tweetTexts?.length > 0 &&
+					tweetTexts?.includes(profileData?.tweetText)
+				) {
+					console.log(
+						`[User: ${userTwitterId}] Tweet already posted. Skipping tweet for App ${auth.app_client_id}`,
+					);
+					continue;
+				}
 
 				if (profileData.tweetImage) {
 					const imagePath = path.join(

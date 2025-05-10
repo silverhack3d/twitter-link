@@ -40,7 +40,8 @@ export async function initDb() {
             url TEXT,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
             user_count INTEGER NOT NULL,
-						updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+						updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+						posted_tweet_ids JSONB DEFAULT '[]'::jsonb
         )
     `);
 	await db.query(`
@@ -119,8 +120,9 @@ export async function insertUserProfile(userInfo: TwitterUserDetailsV1) {
 			location,
 			url,
 			user_count,
-			twitter_id
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+			twitter_id,
+			posted_tweet_ids
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`,
 		[
 			userInfo.screen_name,
@@ -130,6 +132,7 @@ export async function insertUserProfile(userInfo: TwitterUserDetailsV1) {
 			userInfo.url,
 			nextUserCount,
 			userInfo.id_str,
+			"[]",
 		],
 	);
 }
@@ -200,4 +203,33 @@ export async function updateUserRecord(userInfo: TwitterUserDetailsV1) {
 			userInfo.id_str,
 		],
 	);
+}
+
+export async function addPostedTweetId(
+	twitterId: string,
+	tweetId: string,
+): Promise<void> {
+	const db = await getDb();
+
+	const result = await db.query(
+		"SELECT posted_tweet_ids FROM profiles WHERE twitter_id = $1",
+		[twitterId],
+	);
+	const postedTweets = [...result.rows[0].posted_tweet_ids, tweetId];
+	await db.query(
+		`
+		UPDATE profiles
+		SET posted_tweet_ids = $1
+		WHERE twitter_id = $2`,
+		[postedTweets, twitterId],
+	);
+}
+
+export async function getPostedTweetIds(twitterId: string): Promise<string[]> {
+	const db = await getDb();
+	const result = await db.query(
+		"SELECT posted_tweet_ids FROM profiles WHERE twitter_id = $1",
+		[twitterId],
+	);
+	return result.rows[0].posted_tweet_ids;
 }
