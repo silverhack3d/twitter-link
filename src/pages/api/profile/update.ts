@@ -196,10 +196,11 @@ export default async function handler(
 				const postedTweets = await getPostedTweetIds(userTwitterId);
 				const tweets = await tweetClient.v1.tweets(postedTweets);
 				const tweetTexts = tweets.map((tweet) => tweet.full_text);
-				if (
-					tweetTexts?.length > 0 &&
-					tweetTexts?.includes(profileData?.tweetText.slice(0, 50))
-				) {
+				const foundTweet = tweetTexts.find((text) =>
+					text?.includes(profileData.tweetText?.slice(0, 50)),
+				);
+
+				if (foundTweet) {
 					console.log(
 						`[User: ${userTwitterId}] Tweet already posted. Skipping tweet for App ${auth.app_client_id}`,
 					);
