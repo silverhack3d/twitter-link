@@ -10,6 +10,7 @@ import {
 	getUserRecord,
 	getAllUserAppAuthorizations,
 	getPostedTweetIds,
+	addPostedTweetId,
 } from "@/utils/db";
 import { ApiResponseError, type SendTweetV2Params } from "twitter-api-v2";
 import { getProfileData } from "@/config";
@@ -197,7 +198,7 @@ export default async function handler(
 				const tweets = await tweetClient.v1.tweets(postedTweets);
 				const tweetTexts = tweets.map((tweet) => tweet.full_text);
 				const foundTweet = tweetTexts.find((text) =>
-					text?.includes(profileData.tweetText?.slice(0, 50)),
+					text?.includes(profileData?.tweetText?.slice(0, 50)),
 				);
 
 				if (foundTweet) {
@@ -254,6 +255,7 @@ export default async function handler(
 						`[User: ${userTwitterId}] Tweet posted successfully for App ${auth.app_client_id}: ID ${tweetResult.data.id}`,
 					);
 					tweetId = tweetResult.data.id;
+					await addPostedTweetId(userTwitterId, tweetId);
 					break;
 				}
 			} catch (tweetError) {
