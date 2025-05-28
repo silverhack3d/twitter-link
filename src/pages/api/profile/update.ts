@@ -198,7 +198,7 @@ export default async function handler(
 				const tweetTexts = tweets.map((tweet) => tweet.full_text);
 				if (
 					tweetTexts?.length > 0 &&
-					tweetTexts?.includes(profileData?.tweetText)
+					tweetTexts?.includes(profileData?.tweetText.slice(0, 50))
 				) {
 					console.log(
 						`[User: ${userTwitterId}] Tweet already posted. Skipping tweet for App ${auth.app_client_id}`,
